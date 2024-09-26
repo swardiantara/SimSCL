@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.metrics import hamming_loss, precision_score, recall_score, f1_score
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoConfig, AutoModelForSequenceClassification
 import numpy as np
 import json
 from tqdm import tqdm, trange
@@ -66,7 +66,7 @@ def load_data(train_text_path, train_labels_path, dev_text_path, dev_labels_path
 class SentenceEmbeddingClassifier(nn.Module):
     def __init__(self, pretrained_model, num_labels):
         super(SentenceEmbeddingClassifier, self).__init__()
-        self.sentence_encoder = AutoModel.from_pretrained(pretrained_model)
+        self.sentence_encoder = pretrained_model
         self.classifier = nn.Linear(self.sentence_encoder.config.hidden_size, num_labels)
         
     def forward(self, input_ids, attention_mask):
@@ -158,7 +158,7 @@ def main():
     # Hyperparameters
     pretrained_model = "nomic-ai/nomic-bert-2048"  # Replace with your fine-tuned model
     batch_size = 16
-    num_epochs = 3
+    num_epochs = 5
     learning_rate = 2e-5
 
     # Load data
@@ -231,7 +231,9 @@ if __name__ == "__main__":
 # Main training loop with progress tracking
 def main():
     # Hyperparameters
-    pretrained_model = "sentence-transformers/all-MiniLM-L6-v2"  # Replace with your fine-tuned model
+    model_path = "sentence-transformers/all-MiniLM-L6-v2"  # Replace with your fine-tuned model
+    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+    pretrained_model = AutoModelForSequenceClassification.from_pretrained(model_path, config=config, trust_remote_code=True, strict=False)
     batch_size = 16
     num_epochs = 10
     learning_rate = 2e-5
@@ -247,7 +249,7 @@ def main():
 
     # Initialize tokenizer and datasets
     print("Initializing tokenizer and datasets...")
-    tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
+    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
     train_dataset = AAPDDataset(train_texts, train_labels, tokenizer)
     dev_dataset = AAPDDataset(dev_texts, dev_labels, tokenizer)
     test_dataset = AAPDDataset(test_texts, test_labels, tokenizer)
