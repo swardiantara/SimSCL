@@ -11,6 +11,8 @@ from tqdm import tqdm, trange
 
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f'Using device: {device}')
+
 
 # Dataset class
 class AAPDDataset(Dataset):
@@ -154,12 +156,13 @@ def save_results(results, filename):
 # Main training loop
 def main():
     # Hyperparameters
-    pretrained_model = "sentence-transformers/all-MiniLM-L6-v2"  # Replace with your fine-tuned model
+    pretrained_model = "jxm/cde-small-v1"  # Replace with your fine-tuned model
     batch_size = 16
     num_epochs = 3
     learning_rate = 2e-5
 
     # Load data
+    print("Loading raw data...")
     (train_texts, train_labels), (dev_texts, dev_labels), (test_texts, test_labels), mlb = load_data(
         'datasets/AAPD/text_train', 'datasets/AAPD/label_train',
         'datasets/AAPD/text_val', 'datasets/AAPD/label_val',
@@ -168,6 +171,7 @@ def main():
     num_labels = len(mlb.classes_)
 
     # Initialize tokenizer and datasets
+    print("Initializing tokenizer and datasets...")
     tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
     train_dataset = AAPDDataset(train_texts, train_labels, tokenizer)
     dev_dataset = AAPDDataset(dev_texts, dev_labels, tokenizer)
@@ -179,12 +183,14 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
     # Initialize model, loss function, and optimizer
+    print("Initializing model...")
     model = SentenceEmbeddingClassifier(pretrained_model, num_labels).to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
 
     # Training loop
     best_f1_score = 0
+    print("Starting training...")
     for epoch in range(num_epochs):
         train_loss = train(model, train_loader, criterion, optimizer, device)
         dev_loss, dev_results = evaluate(model, dev_loader, criterion, device, mlb)
@@ -205,6 +211,7 @@ def main():
             print("Best model saved!")
 
     # Evaluate on test set
+    print("\nEvaluating on test set...")
     model.load_state_dict(torch.load('best_model.pth'))
     test_loss, test_results = evaluate(model, test_loader, criterion, device, mlb)
     print("\nTest Set Evaluation:")
