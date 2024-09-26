@@ -68,11 +68,9 @@ def construct_dataset(text_path, label_path, silence=False):
     
     sents_m, first_m, second_m, pair_m, sents_s, first_s, second_s, pair_s = [], [], [], [], [], [], [], []
     for text, labels in zip(train_texts, train_labels):
-        print(f'labels: {labels}')
         firsts, seconds= [], []
         for label in labels:
-            print(f'label: {label}')
-            first, second = label.split('.')
+            first, second = label.split('.') if len(label.split('.')) > 1 else [label, '']
             pair = f'{first}-{second}'
             sents_s.append(text)
             first_s.append(first)
