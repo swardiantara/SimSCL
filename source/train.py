@@ -7,6 +7,7 @@ from sklearn.metrics import hamming_loss, precision_score, recall_score, f1_scor
 from transformers import AutoTokenizer, AutoModel
 import numpy as np
 import json
+from tqdm import tqdm, trange
 
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -72,11 +73,12 @@ class SentenceEmbeddingClassifier(nn.Module):
         logits = self.classifier(sentence_embedding)
         return logits
 
-# Training function
+# Training function with progress bar
 def train(model, train_loader, criterion, optimizer, device):
     model.train()
     total_loss = 0
-    for batch in train_loader:
+    progress_bar = tqdm(train_loader, desc="Training")
+    for batch in progress_bar:
         input_ids = batch['input_ids'].to(device)
         attention_mask = batch['attention_mask'].to(device)
         labels = batch['labels'].to(device)
@@ -88,9 +90,11 @@ def train(model, train_loader, criterion, optimizer, device):
         optimizer.step()
 
         total_loss += loss.item()
+        progress_bar.set_postfix({'loss': f"{loss.item():.4f}"})
     return total_loss / len(train_loader)
 
-# Evaluation function
+
+# Evaluation function with progress bar
 def evaluate(model, data_loader, criterion, device, mlb):
     model.eval()
     total_loss = 0
@@ -98,8 +102,9 @@ def evaluate(model, data_loader, criterion, device, mlb):
     all_labels = []
     all_texts = []
     
+    progress_bar = tqdm(data_loader, desc="Evaluating")
     with torch.no_grad():
-        for batch in data_loader:
+        for batch in progress_bar:
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
             labels = batch['labels'].to(device)
@@ -112,6 +117,8 @@ def evaluate(model, data_loader, criterion, device, mlb):
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
             all_texts.extend(data_loader.dataset.texts[i] for i in range(len(labels)))
+
+            progress_bar.set_postfix({'loss': f"{loss.item():.4f}"})
 
     avg_loss = total_loss / len(data_loader)
     hamming_loss_score = hamming_loss(all_labels, all_preds)
@@ -138,6 +145,7 @@ def evaluate(model, data_loader, criterion, device, mlb):
 
     return avg_loss, results
 
+
 # Save results to JSON file
 def save_results(results, filename):
     with open(filename, 'w') as f:
@@ -148,7 +156,7 @@ def main():
     # Hyperparameters
     pretrained_model = "sentence-transformers/all-MiniLM-L6-v2"  # Replace with your fine-tuned model
     batch_size = 16
-    num_epochs = 10
+    num_epochs = 3
     learning_rate = 2e-5
 
     # Load data
@@ -197,6 +205,81 @@ def main():
             print("Best model saved!")
 
     # Evaluate on test set
+    model.load_state_dict(torch.load('best_model.pth'))
+    test_loss, test_results = evaluate(model, test_loader, criterion, device, mlb)
+    print("\nTest Set Evaluation:")
+    print(f"Test Loss: {test_loss:.4f}")
+    print(f"Hamming Loss: {test_results['metrics']['hamming_loss']:.4f}")
+    print(f"Precision: {test_results['metrics']['precision']:.4f}")
+    print(f"Recall: {test_results['metrics']['recall']:.4f}")
+    print(f"F1-score: {test_results['metrics']['f1_score']:.4f}")
+    save_results(test_results, 'test_results.json')
+
+    print("Training and evaluation completed!")
+
+if __name__ == "__main__":
+    main()
+
+
+# Main training loop with progress tracking
+def main():
+    # Hyperparameters
+    pretrained_model = "sentence-transformers/all-MiniLM-L6-v2"  # Replace with your fine-tuned model
+    batch_size = 16
+    num_epochs = 10
+    learning_rate = 2e-5
+
+    # Load data
+    print("Loading data...")
+    (train_texts, train_labels), (dev_texts, dev_labels), (test_texts, test_labels), mlb = load_data(
+        'datasets/AAPD/text_train', 'datasets/AAPD/label_train',
+        'datasets/AAPD/text_val', 'datasets/AAPD/label_val',
+        'datasets/AAPD/text_test', 'datasets/AAPD/label_test'
+    )
+    num_labels = len(mlb.classes_)
+
+    # Initialize tokenizer and datasets
+    print("Initializing tokenizer and datasets...")
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
+    train_dataset = AAPDDataset(train_texts, train_labels, tokenizer)
+    dev_dataset = AAPDDataset(dev_texts, dev_labels, tokenizer)
+    test_dataset = AAPDDataset(test_texts, test_labels, tokenizer)
+
+    # Create data loaders
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    dev_loader = DataLoader(dev_dataset, batch_size=batch_size)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size)
+
+    # Initialize model, loss function, and optimizer
+    print("Initializing model...")
+    model = SentenceEmbeddingClassifier(pretrained_model, num_labels).to(device)
+    criterion = nn.BCEWithLogitsLoss()
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
+
+    # Training loop
+    best_f1_score = 0
+    print("Starting training...")
+    for epoch in trange(num_epochs, desc="Epochs"):
+        train_loss = train(model, train_loader, criterion, optimizer, device)
+        dev_loss, dev_results = evaluate(model, dev_loader, criterion, device, mlb)
+        
+        print(f"\nEpoch {epoch+1}/{num_epochs}")
+        print(f"Train Loss: {train_loss:.4f}, Dev Loss: {dev_loss:.4f}")
+        print(f"Dev Metrics:")
+        print(f"Hamming Loss: {dev_results['metrics']['hamming_loss']:.4f}")
+        print(f"Precision: {dev_results['metrics']['precision']:.4f}")
+        print(f"Recall: {dev_results['metrics']['recall']:.4f}")
+        print(f"F1-score: {dev_results['metrics']['f1_score']:.4f}")
+        
+        # Save the best model based on F1-score
+        if dev_results['metrics']['f1_score'] > best_f1_score:
+            best_f1_score = dev_results['metrics']['f1_score']
+            torch.save(model.state_dict(), 'best_model.pth')
+            save_results(dev_results, 'best_model_dev_results.json')
+            print("Best model saved!")
+
+    # Evaluate on test set
+    print("\nEvaluating on test set...")
     model.load_state_dict(torch.load('best_model.pth'))
     test_loss, test_results = evaluate(model, test_loader, criterion, device, mlb)
     print("\nTest Set Evaluation:")
