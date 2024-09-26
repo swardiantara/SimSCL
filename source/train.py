@@ -157,9 +157,9 @@ def save_results(results, filename):
 # Main training loop with progress tracking
 def main():
     # Hyperparameters
-    model_path = "sentence-transformers/all-MiniLM-L6-v2"  # Replace with your fine-tuned model
+    model_path = "nomic-ai/nomic-bert-2048"  # Replace with your fine-tuned model
     config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
-    pretrained_model = AutoModelForSequenceClassification.from_pretrained(model_path, config=config, trust_remote_code=True, strict=False)
+    pretrained_model = AutoModelForSequenceClassification.from_pretrained(model_path, config=config, trust_remote_code=True)
     batch_size = 16
     num_epochs = 10
     learning_rate = 2e-5
