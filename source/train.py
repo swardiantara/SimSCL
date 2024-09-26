@@ -156,7 +156,7 @@ def save_results(results, filename):
 # Main training loop
 def main():
     # Hyperparameters
-    pretrained_model = "jxm/cde-small-v1"  # Replace with your fine-tuned model
+    pretrained_model = "nomic-ai/nomic-bert-2048"  # Replace with your fine-tuned model
     batch_size = 16
     num_epochs = 3
     learning_rate = 2e-5
