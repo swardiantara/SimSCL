@@ -210,7 +210,7 @@ def main():
     else:
         model = SentenceTransformer(args.model_name_or_path).to(device)
 
-    print(f'Model is loaded successfully: {model_path if args.strategy == 'multi' else args.model_name_or_path}')
+    print(f'Model is loaded successfully: {model_path if args.strategy == "multi" else args.model_name_or_path}')
     
     # Load your dataset
     print(f'Start preparing the dataset...')
