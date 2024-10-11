@@ -4,6 +4,7 @@ import argparse
 
 import torch
 import pandas as pd
+from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
 from sentence_transformers import SentenceTransformer, InputExample, losses, models, evaluation
 from sentence_transformers.readers import InputExample
@@ -156,11 +157,12 @@ def create_pairs(args, dataset: pd.DataFrame, model=None) -> list[InputExample]:
     examples = []
 
     if args.exclude_duplicate_negative:
-        for label in dataset[args.label_name].unique():
+        for label in tqdm(dataset[args.label_name].unique(), total=len(dataset[args.label_name].unique()), desc="Label progress..."):
             cluster_df = dataset[dataset[args.label_name] == label]
             other_df = dataset[dataset[args.label_name] != label]
-            for i, row in cluster_df.iterrows():
-                for j, other_row in cluster_df.iterrows():
+            # tqdm(other_df.iterrows(), desc="Outer loop")
+            for i, row in tqdm(cluster_df.iterrows(), total=len(cluster_df), desc="Anchor progress..."):
+                for j, other_row in tqdm(cluster_df.iterrows(), total=len(cluster_df), desc="Positive pair progress..."):
                     # construct positive pairs
                     if i != j and row['text'] != other_row['text']:
                         if args.filter_threshold > 0:
@@ -170,7 +172,7 @@ def create_pairs(args, dataset: pd.DataFrame, model=None) -> list[InputExample]:
                         else:
                             examples.append(InputExample(texts=[row['text'], other_row['text']], label=1.0))
 
-                for j, other_row in other_df.iterrows():
+                for j, other_row in tqdm(other_df.iterrows(), total=len(other_df), desc="Negative pair progress..."):
                     # construct negative pairs
                     if row['text'] != other_row['text']:
                         if args.filter_threshold > 0:
