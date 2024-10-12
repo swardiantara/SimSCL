@@ -162,7 +162,7 @@ def create_pairs(args, dataset: pd.DataFrame, model=None) -> list[InputExample]:
             other_df = dataset[dataset[args.label_name] != label]
             # tqdm(other_df.iterrows(), desc="Outer loop")
             for i, row in tqdm(cluster_df.iterrows(), total=len(cluster_df), desc="Anchor progress..."):
-                for j, other_row in tqdm(cluster_df.iterrows(), total=len(cluster_df), desc="Positive pair progress..."):
+                for j, other_row in tqdm(cluster_df.iterrows(), total=len(cluster_df), leave=False, desc="Positive pair progress..."):
                     # construct positive pairs
                     if i != j and row['text'] != other_row['text']:
                         if args.filter_threshold > 0:
@@ -172,7 +172,7 @@ def create_pairs(args, dataset: pd.DataFrame, model=None) -> list[InputExample]:
                         else:
                             examples.append(InputExample(texts=[row['text'], other_row['text']], label=1.0))
 
-                for j, other_row in tqdm(other_df.iterrows(), total=len(other_df), desc="Negative pair progress..."):
+                for j, other_row in tqdm(other_df.iterrows(), total=len(other_df), leave=False, desc="Negative pair progress..."):
                     # construct negative pairs
                     if row['text'] != other_row['text']:
                         if args.filter_threshold > 0:
@@ -221,7 +221,7 @@ def main():
     print(f'Finish preparing the dataset!')
     
     print(f'Start constructing pairs...')
-    contrastive_samples = create_pairs(args, dataframe_single, model=model)
+    contrastive_samples = create_pairs(args, dataframe_single, model=model.to(torch.device('cpu')))
     print(f'Finish constructing pairs!')
     # contrastive_samples.to_excel(os.path.join(args.output_dir, f'cont_{args.dataset}.xlsx'), index=False)
     # Step 3: Create DataLoader
