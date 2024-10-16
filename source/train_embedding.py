@@ -152,48 +152,55 @@ def construct_dataset(args, text_path, label_path, silence=False):
     return dataframe_multi, dataframe_single 
 
 
+def batch_generator(dataframe: pd.DataFrame, batch_size: int):
+    for i in range(0, len(dataframe), batch_size):
+        yield dataframe[i:i + batch_size]
+
+
 # Create pairs for contrastive learning
-def create_pairs(args, dataset: pd.DataFrame, model=None) -> list[InputExample]:
+def create_pairs(args, dataset: pd.DataFrame, batch_size: int=1000, model=None) -> list[InputExample]:
     examples = []
-
-    if args.exclude_duplicate_negative:
-        for label in tqdm(dataset[args.label_name].unique(), total=len(dataset[args.label_name].unique()), desc="Label progress..."):
-            cluster_df = dataset[dataset[args.label_name] == label]
-            other_df = dataset[dataset[args.label_name] != label]
-            # tqdm(other_df.iterrows(), desc="Outer loop")
-            for i, row in tqdm(cluster_df.iterrows(), total=len(cluster_df), desc="Anchor progress..."):
-                for j, other_row in tqdm(cluster_df.iterrows(), total=len(cluster_df), leave=False, desc="Positive pair progress..."):
-                    # construct positive pairs
-                    if i != j and row['text'] != other_row['text']:
-                        if args.filter_threshold > 0:
-                            [[similarity]] = cosine_similarity([model.encode(row['text'])], [model.encode(other_row['text'])], dense_output=False)
-                            if similarity <= args.filter_threshold:
+    # tqdm(batch_generator(dataset, batch_size), total=total_batches, desc="Processing batches")
+    total_batches = (len(dataset) + batch_size - 1) // batch_size
+    for batch in tqdm(batch_generator(dataset, batch_size), total=total_batches, desc="Processing batches..."):
+        if args.exclude_duplicate_negative:
+            for label in tqdm(batch[args.label_name].unique(), total=len(batch[args.label_name].unique()), desc="Label progress..."):
+                cluster_df = dataset[dataset[args.label_name] == label]
+                other_df = dataset[dataset[args.label_name] != label]
+                # tqdm(other_df.iterrows(), desc="Outer loop")
+                for i, row in tqdm(batch.iterrows(), total=len(batch), desc="Anchor progress..."):
+                    for j, other_row in tqdm(cluster_df.iterrows(), total=len(cluster_df), leave=False, desc="Positive pair progress..."):
+                        # construct positive pairs
+                        if i != j and row['text'] != other_row['text']:
+                            if args.filter_threshold > 0:
+                                [[similarity]] = cosine_similarity([model.encode(row['text'])], [model.encode(other_row['text'])], dense_output=False)
+                                if similarity <= args.filter_threshold:
+                                    examples.append(InputExample(texts=[row['text'], other_row['text']], label=1.0))
+                            else:
                                 examples.append(InputExample(texts=[row['text'], other_row['text']], label=1.0))
-                        else:
-                            examples.append(InputExample(texts=[row['text'], other_row['text']], label=1.0))
 
-                for j, other_row in tqdm(other_df.iterrows(), total=len(other_df), leave=False, desc="Negative pair progress..."):
-                    # construct negative pairs
-                    if row['text'] != other_row['text']:
-                        if args.filter_threshold > 0:
-                            [[similarity]] = cosine_similarity([model.encode(row['text'])], [model.encode(other_row['text'])], dense_output=False)
-                            if similarity >= args.filter_threshold:
+                    for j, other_row in tqdm(other_df.iterrows(), total=len(other_df), leave=False, desc="Negative pair progress..."):
+                        # construct negative pairs
+                        if row['text'] != other_row['text']:
+                            if args.filter_threshold > 0:
+                                [[similarity]] = cosine_similarity([model.encode(row['text'])], [model.encode(other_row['text'])], dense_output=False)
+                                if similarity >= args.filter_threshold:
+                                    examples.append(InputExample(texts=[row['text'], other_row['text']], label=0.0))
+                            else:
                                 examples.append(InputExample(texts=[row['text'], other_row['text']], label=0.0))
-                        else:
-                            examples.append(InputExample(texts=[row['text'], other_row['text']], label=0.0))
-    
-    else: # include negative pairs containing exactly the same sentence or text
-        for label in dataset[args.label_name].unique():
-            cluster_df = dataset[dataset[args.label_name] == label]
-            other_df = dataset[dataset[args.label_name] != label]
-            for i, row in cluster_df.iterrows():
-                for j, other_row in cluster_df.iterrows():
-                    # construct positive pairs
-                    if i != j:
-                        examples.append(InputExample(texts=[row['text'], other_row['text']], label=1.0))
-                for j, other_row in other_df.iterrows():
-                    # construct negative pairs
-                    examples.append(InputExample(texts=[row['text'], other_row['text']], label=0.0))
+        
+        else: # include negative pairs containing exactly the same sentence or text
+            for label in dataset[args.label_name].unique():
+                cluster_df = dataset[dataset[args.label_name] == label]
+                other_df = dataset[dataset[args.label_name] != label]
+                for i, row in cluster_df.iterrows():
+                    for j, other_row in cluster_df.iterrows():
+                        # construct positive pairs
+                        if i != j:
+                            examples.append(InputExample(texts=[row['text'], other_row['text']], label=1.0))
+                    for j, other_row in other_df.iterrows():
+                        # construct negative pairs
+                        examples.append(InputExample(texts=[row['text'], other_row['text']], label=0.0))
     return examples
 
 
@@ -221,7 +228,7 @@ def main():
     print(f'Finish preparing the dataset!')
     
     print(f'Start constructing pairs...')
-    contrastive_samples = create_pairs(args, dataframe_single, model=model.to(torch.device('cpu')))
+    contrastive_samples = create_pairs(args=args, dataset=dataframe_single, batch_size=1000, model=model.to(torch.device('cpu')))
     print(f'Finish constructing pairs!')
     # contrastive_samples.to_excel(os.path.join(args.output_dir, f'cont_{args.dataset}.xlsx'), index=False)
     # Step 3: Create DataLoader
